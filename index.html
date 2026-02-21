@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="A beautiful, fast JSON and YAML formatter and validator. Format, validate, and highlight errors in your JSON and YAML data instantly." />
+    <title>DevFormat — JSON & YAML Formatter</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Header -->
+      <header class="header">
+        <div class="header-inner">
+          <div class="logo">
+            <span class="logo-icon">⚡</span>
+            <span class="logo-text">DevFormat</span>
+          </div>
+          <p class="header-tagline">JSON &amp; YAML Formatter · Validator · Error Highlighter</p>
+        </div>
+      </header>
+
+      <!-- Tab Bar -->
+      <nav class="tab-bar" role="tablist">
+        <button class="tab active" id="tab-json" role="tab" aria-selected="true" aria-controls="panel-json" data-mode="json">
+          <span class="tab-icon">{ }</span>
+          JSON
+        </button>
+        <button class="tab" id="tab-yaml" role="tab" aria-selected="false" aria-controls="panel-yaml" data-mode="yaml">
+          <span class="tab-icon">—</span>
+          YAML
+        </button>
+      </nav>
+
+      <!-- Main Editor Area -->
+      <main class="editor-area">
+
+        <!-- JSON Panel -->
+        <section class="panel active" id="panel-json" role="tabpanel" aria-labelledby="tab-json">
+          <div class="pane-wrapper">
+            <!-- Input Pane -->
+            <div class="pane" id="json-input-pane">
+              <div class="pane-header">
+                <span class="pane-label">Input</span>
+                <div class="pane-actions">
+                  <button class="btn-icon" id="json-paste-btn" title="Paste from clipboard">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="4" rx="1"/><rect x="5" y="4" width="14" height="16" rx="2"/></svg>
+                  </button>
+                  <button class="btn-icon" id="json-clear-btn" title="Clear input">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="editor-container" id="json-editor-container">
+                <div class="line-numbers" id="json-line-numbers"></div>
+                <textarea
+                  class="editor"
+                  id="json-input"
+                  spellcheck="false"
+                  autocomplete="off"
+                  autocorrect="off"
+                  autocapitalize="off"
+                  placeholder='Paste your JSON here…&#10;&#10;{&#10;  "name": "DevFormat",&#10;  "awesome": true&#10;}'
+                ></textarea>
+              </div>
+            </div>
+
+            <!-- Divider -->
+            <div class="pane-divider">
+              <button class="btn-format" id="json-format-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
+                Format
+              </button>
+              <button class="btn-minify" id="json-minify-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 3 15 3 15 10"/><line x1="4" y1="20" x2="15" y2="3"/><polyline points="16 14 16 21 9 21"/><line x1="20" y1="4" x2="9" y2="21"/></svg>
+                Minify
+              </button>
+            </div>
+
+            <!-- Output Pane -->
+            <div class="pane" id="json-output-pane">
+              <div class="pane-header">
+                <span class="pane-label">Output</span>
+                <div class="pane-actions">
+                  <button class="btn-icon" id="json-copy-btn" title="Copy to clipboard">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="editor-container output-container" id="json-output-container">
+                <div class="line-numbers" id="json-output-line-numbers"></div>
+                <pre class="output" id="json-output"></pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- Status Bar -->
+          <div class="status-bar" id="json-status-bar">
+            <span class="status-idle">Ready · Paste JSON and click Format</span>
+          </div>
+        </section>
+
+        <!-- YAML Panel -->
+        <section class="panel" id="panel-yaml" role="tabpanel" aria-labelledby="tab-yaml">
+          <div class="pane-wrapper">
+            <!-- Input Pane -->
+            <div class="pane" id="yaml-input-pane">
+              <div class="pane-header">
+                <span class="pane-label">Input</span>
+                <div class="pane-actions">
+                  <button class="btn-icon" id="yaml-paste-btn" title="Paste from clipboard">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="4" rx="1"/><rect x="5" y="4" width="14" height="16" rx="2"/></svg>
+                  </button>
+                  <button class="btn-icon" id="yaml-clear-btn" title="Clear input">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="editor-container" id="yaml-editor-container">
+                <div class="line-numbers" id="yaml-line-numbers"></div>
+                <textarea
+                  class="editor"
+                  id="yaml-input"
+                  spellcheck="false"
+                  autocomplete="off"
+                  autocorrect="off"
+                  autocapitalize="off"
+                  placeholder="Paste your YAML here…&#10;&#10;name: DevFormat&#10;awesome: true&#10;features:&#10;  - format&#10;  - validate"
+                ></textarea>
+              </div>
+            </div>
+
+            <!-- Divider -->
+            <div class="pane-divider">
+              <button class="btn-format" id="yaml-format-btn">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/></svg>
+                Format
+              </button>
+            </div>
+
+            <!-- Output Pane -->
+            <div class="pane" id="yaml-output-pane">
+              <div class="pane-header">
+                <span class="pane-label">Output</span>
+                <div class="pane-actions">
+                  <button class="btn-icon" id="yaml-copy-btn" title="Copy to clipboard">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="editor-container output-container" id="yaml-output-container">
+                <div class="line-numbers" id="yaml-output-line-numbers"></div>
+                <pre class="output" id="yaml-output"></pre>
+              </div>
+            </div>
+          </div>
+
+          <!-- Status Bar -->
+          <div class="status-bar" id="yaml-status-bar">
+            <span class="status-idle">Ready · Paste YAML and click Format</span>
+          </div>
+        </section>
+
+      </main>
+
+      <!-- Toast Notification -->
+      <div class="toast" id="toast" role="alert" aria-live="polite"></div>
+    </div>
+
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>
