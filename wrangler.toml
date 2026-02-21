@@ -1,4 +1,4 @@
-name = "devformat"
+name = "json-yaml-compare"
 compatibility_date = "2024-01-01"
 
 [assets]

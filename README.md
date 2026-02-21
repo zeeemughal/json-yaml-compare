@@ -1,4 +1,6 @@
-# ⚡ DevFormat
+# ⚡ DevFormat (JSON & YAML Compare)
+
+**Live Preview**: [https://yaml.zee.im](https://yaml.zee.im)
 
 DevFormat is a lightning-fast, privacy-first, client-side application designed to format, validate, and highlight errors in **JSON** and **YAML** data natively in your browser.
 
