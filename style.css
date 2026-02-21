@@ -61,6 +61,36 @@
   --transition: 0.18s ease;
 }
 
+[data-theme="light"] {
+  --bg-base: #f7fafc;
+  --bg-surface: #ffffff;
+  --bg-elevated: #edf2f7;
+  --bg-overlay: #e2e8f0;
+
+  --border: rgba(0, 0, 0, 0.08);
+  --border-accent: rgba(49, 130, 206, 0.3);
+
+  --text-primary: #1a202c;
+  --text-secondary: #4a5568;
+  --text-muted: #718096;
+
+  --accent: #3182ce;
+  --accent-hover: #2b6cb0;
+  --accent-glow: rgba(49, 130, 206, 0.1);
+
+  --success: #38a169;
+  --success-bg: rgba(56, 161, 105, 0.1);
+  --success-border: rgba(56, 161, 105, 0.3);
+
+  --error: #e53e3e;
+  --error-bg: rgba(229, 62, 62, 0.08);
+  --error-border: rgba(229, 62, 62, 0.3);
+  --error-line-bg: rgba(229, 62, 62, 0.06);
+
+  --warn: #dd6b20;
+  --warn-bg: rgba(221, 107, 32, 0.1);
+}
+
 html {
   height: 100%;
 }
@@ -301,6 +331,30 @@ body {
 }
 
 /* Syntax overrides are now handled by CodeMirror theme */
+.cm-yaml-bool {
+  color: #b794f4;
+}
+
+.cm-yaml-number {
+  color: #f6ad55;
+}
+
+.cm-yaml-null {
+  color: #718096;
+  font-style: italic;
+}
+
+[data-theme="light"] .cm-yaml-bool {
+  color: #805ad5;
+}
+
+[data-theme="light"] .cm-yaml-number {
+  color: #dd6b20;
+}
+
+[data-theme="light"] .cm-yaml-null {
+  color: #a0aec0;
+}
 
 /* Removed manual syntax tokens css */
 

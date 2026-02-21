@@ -1,11 +1,82 @@
-import jsyaml from 'js-yaml';
-import { EditorState } from '@codemirror/state';
-import { EditorView, keymap } from '@codemirror/view';
+import YAML from 'yaml';
+import { EditorState, Compartment } from '@codemirror/state';
+import { EditorView, keymap, Decoration, ViewPlugin } from '@codemirror/view';
 import { basicSetup } from 'codemirror';
-import { indentWithTab } from '@codemirror/commands';
+import { indentWithTab, undo, redo } from '@codemirror/commands';
+import { HighlightStyle, syntaxHighlighting, syntaxTree } from '@codemirror/language';
 import { json } from '@codemirror/lang-json';
 import { yaml } from '@codemirror/lang-yaml';
-import { vscodeDark } from '@uiw/codemirror-theme-vscode';
+import { vscodeDark, vscodeLight } from '@uiw/codemirror-theme-vscode';
+import { tags } from '@lezer/highlight';
+
+// Custom YAML highlight style — @lezer/yaml uses these specific tags:
+//   tags.content              → unquoted scalars (strings, booleans, numbers, nulls)
+//   tags.string               → quoted string literals
+//   tags.definition(tags.propertyName) → keys
+//   tags.separator            → : , - separators
+//   tags.labelName            → anchors & aliases
+//   tags.lineComment          → comments
+//   tags.keyword              → directive names (%YAML, %TAG)
+//   tags.attributeValue       → directive content
+//   tags.meta                 → --- / ... markers
+//   tags.typeName             → !! tags
+const yamlHighlight = syntaxHighlighting(
+  HighlightStyle.define([
+    { tag: tags.definition(tags.propertyName), color: '#90cdf4' }, // keys
+    { tag: tags.propertyName, color: '#90cdf4' }, // keys fallback
+    { tag: tags.content, color: '#68d391' }, // unquoted values (strings/numbers/bools/nulls)
+    { tag: tags.string, color: '#68d391' }, // quoted strings
+    { tag: tags.attributeValue, color: '#68d391' }, // directive values
+    { tag: tags.special(tags.string), color: '#68d391' }, // block literal headers
+    { tag: tags.separator, color: '#8892a4' }, // : , -
+    { tag: tags.lineComment, color: '#4a5568', fontStyle: 'italic' },
+    { tag: tags.keyword, color: '#b794f4' }, // directives
+    { tag: tags.meta, color: '#8892a4' }, // --- ...
+    { tag: tags.typeName, color: '#f6ad55' }, // !! tags
+    { tag: tags.labelName, color: '#b794f4' }, // anchors & aliases
+    { tag: tags.squareBracket, color: '#8892a4' },
+    { tag: tags.brace, color: '#8892a4' },
+    { tag: tags.punctuation, color: '#8892a4' },
+  ])
+);
+
+// YAML doesn't distinguish between booleans, numbers, nulls, and strings at the token level
+// (they are all tags.content). This plugin adds specific colours for true/false/numeric/null values
+const yamlValueDecorations = ViewPlugin.fromClass(class {
+  constructor(view) {
+    this.decorations = this.buildDecorations(view);
+  }
+  update(update) {
+    if (update.docChanged || update.viewportChanged) {
+      this.decorations = this.buildDecorations(update.view);
+    }
+  }
+  buildDecorations(view) {
+    const builder = [];
+    const doc = view.state.doc;
+    for (const { from, to } of view.visibleRanges) {
+      syntaxTree(view.state).iterate({
+        from, to,
+        enter(node) {
+          if (node.name === "Literal") {
+            const text = doc.sliceString(node.from, node.to);
+            if (/^(?:true|false)$/.test(text)) {
+              builder.push(Decoration.mark({ class: "cm-yaml-bool" }).range(node.from, node.to));
+            } else if (/^-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?$/.test(text)) {
+              builder.push(Decoration.mark({ class: "cm-yaml-number" }).range(node.from, node.to));
+            } else if (text === "null" || text === "~") {
+              builder.push(Decoration.mark({ class: "cm-yaml-null" }).range(node.from, node.to));
+            }
+          }
+        }
+      });
+    }
+    // builder array needs to be sorted for Decoration.set, but iterate goes in order
+    return Decoration.set(builder);
+  }
+}, {
+  decorations: v => v.decorations
+});
 
 // ===== Storage Keys =====
 const KEYS = {
@@ -14,7 +85,63 @@ const KEYS = {
   yamlInput: 'devformat_yaml_input',
   yamlOutput: 'devformat_yaml_output',
   activeTab: 'devformat_active_tab',
+  themePref: 'devformat_theme',
 };
+
+// Global Store for Theme Compartments to live-swap the Editor theme
+const themeCompartments = [];
+
+// Get active CodeMirror theme based on current mode
+function getActiveEditorTheme() {
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark' ||
+    (document.documentElement.getAttribute('data-theme') === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  return isDark ? vscodeDark : vscodeLight;
+}
+
+// ===== Theme Initialization =====
+function initTheme() {
+  const themeToggle = document.getElementById('theme-toggle');
+
+  const ICONS = {
+    dark: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>`,
+    light: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>`,
+    auto: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>`
+  };
+
+  const THEMES = ['auto', 'dark', 'light'];
+  let currentPref = localStorage.getItem(KEYS.themePref) || 'auto';
+
+  function applyTheme(pref) {
+    if (pref === 'auto') {
+      const isSystemDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      document.documentElement.setAttribute('data-theme', isSystemDark ? 'dark' : 'light');
+    } else {
+      document.documentElement.setAttribute('data-theme', pref);
+    }
+    themeToggle.innerHTML = ICONS[pref];
+
+    // Live switch existing editors
+    const newTheme = getActiveEditorTheme();
+    themeCompartments.forEach(({ view, compartment }) => {
+      view.dispatch({ effects: compartment.reconfigure(newTheme) });
+    });
+  }
+
+  themeToggle.addEventListener('click', () => {
+    const nextIdx = (THEMES.indexOf(currentPref) + 1) % THEMES.length;
+    currentPref = THEMES[nextIdx];
+    localStorage.setItem(KEYS.themePref, currentPref);
+    applyTheme(currentPref);
+  });
+
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+    if (localStorage.getItem(KEYS.themePref) === 'auto' || !localStorage.getItem(KEYS.themePref)) {
+      applyTheme('auto');
+    }
+  });
+
+  applyTheme(currentPref);
+}
 
 // ===== Utilities =====
 
@@ -78,29 +205,40 @@ function createEditor(parentEl, initialDoc, langExt, onChange = null) {
     },
     ".cm-lineNumbers .cm-gutterElement": { padding: "0 10px 0 14px", minWidth: "46px" },
     ".cm-cursor": { borderLeftColor: "var(--text-primary)" }
-  }, { dark: true });
+  }, { dark: false }); // Let the base theme (vscodeDark/vscodeLight) handle general dark/light tokens
+
+  const isYaml = langExt === yaml;
+  const themeCompartment = new Compartment();
 
   const extensions = [
     basicSetup,
     langExt(),
-    vscodeDark,
+    themeCompartment.of(getActiveEditorTheme()),
+    ...(isYaml ? [yamlHighlight, yamlValueDecorations] : []),
     customTheme,
     keymap.of([indentWithTab])
   ];
 
   if (onChange) {
     extensions.push(EditorView.updateListener.of((update) => {
-      if (update.docChanged) onChange(update.state.doc.toString());
+      // only trigger onChange for explicit user edits, not formatting replacements
+      if (update.docChanged && update.transactions.some(tr => tr.isUserEvent("input") || tr.isUserEvent("delete") || tr.isUserEvent("undo") || tr.isUserEvent("redo") || tr.isUserEvent("paste"))) {
+        onChange(update.state.doc.toString());
+      }
     }));
   }
 
   const state = EditorState.create({ doc: initialDoc, extensions });
-  return new EditorView({ state, parent: parentEl });
+  const view = new EditorView({ state, parent: parentEl });
+
+  themeCompartments.push({ view, compartment: themeCompartment });
+  return view;
 }
 
-function setEditorDoc(view, text) {
+function setEditorDoc(view, text, isUserAction = false) {
   view.dispatch({
-    changes: { from: 0, to: view.state.doc.length, insert: text }
+    changes: { from: 0, to: view.state.doc.length, insert: text },
+    userEvent: isUserAction ? "input" : undefined
   });
 }
 
@@ -124,25 +262,47 @@ function initJSON() {
   const savedOutput = localStorage.getItem(KEYS.jsonOutput) || '';
 
   let debounceTimer;
+  let isSyncing = false;
 
   // Initialize CodeMirror Editors
   const inputEditor = createEditor(inputContainer, savedInput, json, (val) => {
+    if (isSyncing) return;
     localStorage.setItem(KEYS.jsonInput, val);
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-      if (val.trim()) processJSON(false);
+      if (val.trim()) processJSON(false, true);
     }, 600);
   });
 
   const outputEditor = createEditor(outputContainer, savedOutput, json, (val) => {
+    if (isSyncing) return;
     localStorage.setItem(KEYS.jsonOutput, val);
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      if (!val.trim()) {
+        isSyncing = true;
+        setEditorDoc(inputEditor, '', true);
+        isSyncing = false;
+        return;
+      }
+      try {
+        JSON.parse(val); // only sync back if valid
+        isSyncing = true;
+        setEditorDoc(inputEditor, val, true);
+        isSyncing = false;
+      } catch (e) { }
+    }, 600);
   });
 
-  function processJSON(minify = false) {
-    const raw = inputEditor.state.doc.toString().trim();
+  function processJSON(minify = false, fromInput = true) {
+    const raw = fromInput ? inputEditor.state.doc.toString().trim() : outputEditor.state.doc.toString().trim();
     if (!raw) {
-      setEditorDoc(outputEditor, '');
-      localStorage.removeItem(KEYS.jsonOutput);
+      if (fromInput) {
+        isSyncing = true;
+        setEditorDoc(outputEditor, '');
+        isSyncing = false;
+        localStorage.removeItem(KEYS.jsonOutput);
+      }
       setStatus(statusBar, 'idle', 'Ready · Paste JSON and click Format');
       return;
     }
@@ -153,7 +313,10 @@ function initJSON() {
         ? JSON.stringify(parsed)
         : JSON.stringify(parsed, null, 2);
 
-      setEditorDoc(outputEditor, formatted);
+      isSyncing = true;
+      if (fromInput) setEditorDoc(outputEditor, formatted);
+      else setEditorDoc(inputEditor, formatted, true);
+      isSyncing = false;
       localStorage.setItem(KEYS.jsonOutput, formatted);
 
       const lines = formatted.split('\n').length;
@@ -171,8 +334,10 @@ function initJSON() {
   minifyBtn.addEventListener('click', () => processJSON(true));
 
   clearBtn.addEventListener('click', () => {
-    setEditorDoc(inputEditor, '');
+    isSyncing = true;
+    setEditorDoc(inputEditor, '', true);
     setEditorDoc(outputEditor, '');
+    isSyncing = false;
     localStorage.removeItem(KEYS.jsonInput);
     localStorage.removeItem(KEYS.jsonOutput);
     setStatus(statusBar, 'idle', 'Ready · Paste JSON and click Format');
@@ -182,9 +347,11 @@ function initJSON() {
   pasteBtn.addEventListener('click', async () => {
     try {
       const text = await navigator.clipboard.readText();
-      setEditorDoc(inputEditor, text);
+      isSyncing = true;
+      setEditorDoc(inputEditor, text, true);
+      isSyncing = false;
       localStorage.setItem(KEYS.jsonInput, text);
-      processJSON(false);
+      processJSON(false, true);
     } catch {
       showToast('Clipboard access denied', 'error-toast');
     }
@@ -229,41 +396,60 @@ function initYAML() {
   const savedOutput = localStorage.getItem(KEYS.yamlOutput) || '';
 
   let debounceTimer;
+  let isSyncing = false;
 
   const inputEditor = createEditor(inputContainer, savedInput, yaml, (val) => {
+    if (isSyncing) return;
     localStorage.setItem(KEYS.yamlInput, val);
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
-      if (val.trim()) processYAML();
+      if (val.trim()) processYAML(true);
     }, 600);
   });
 
   const outputEditor = createEditor(outputContainer, savedOutput, yaml, (val) => {
+    if (isSyncing) return;
     localStorage.setItem(KEYS.yamlOutput, val);
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      if (!val.trim()) {
+        isSyncing = true;
+        setEditorDoc(inputEditor, '', true);
+        isSyncing = false;
+        return;
+      }
+      try {
+        YAML.parse(val); // dry run to validate
+        isSyncing = true;
+        setEditorDoc(inputEditor, val, true);
+        isSyncing = false;
+      } catch (e) { }
+    }, 600);
   });
 
-  function processYAML() {
-    const raw = inputEditor.state.doc.toString().trim();
+  function processYAML(fromInput = true) {
+    const raw = fromInput ? inputEditor.state.doc.toString().trim() : outputEditor.state.doc.toString().trim();
     if (!raw) {
-      setEditorDoc(outputEditor, '');
-      localStorage.removeItem(KEYS.yamlOutput);
+      if (fromInput) {
+        isSyncing = true;
+        setEditorDoc(outputEditor, '');
+        isSyncing = false;
+        localStorage.removeItem(KEYS.yamlOutput);
+      }
       setStatus(statusBar, 'idle', 'Ready · Paste YAML and click Format');
       return;
     }
 
     try {
-      const docs = [];
-      jsyaml.loadAll(raw, doc => docs.push(doc));
-
-      let formatted;
-      if (docs.length === 1) {
-        formatted = jsyaml.dump(docs[0], { indent: 2, lineWidth: -1, noRefs: true, sortKeys: false });
-      } else {
-        formatted = docs.map(d => jsyaml.dump(d, { indent: 2, lineWidth: -1, noRefs: true, sortKeys: false })).join('---\n');
-      }
+      // The `yaml` package preserves comments by default when document stringifying
+      const docs = YAML.parseAllDocuments(raw);
+      let formatted = docs.map(doc => doc.toString({ indent: 2, lineWidth: 0 })).join('\n---\n');
       formatted = formatted.trimEnd();
 
-      setEditorDoc(outputEditor, formatted);
+      isSyncing = true;
+      if (fromInput) setEditorDoc(outputEditor, formatted);
+      else setEditorDoc(inputEditor, formatted, true);
+      isSyncing = false;
       localStorage.setItem(KEYS.yamlOutput, formatted);
 
       const lines = formatted.split('\n').length;
@@ -280,11 +466,13 @@ function initYAML() {
     }
   }
 
-  formatBtn.addEventListener('click', () => processYAML());
+  formatBtn.addEventListener('click', () => processYAML(true));
 
   clearBtn.addEventListener('click', () => {
-    setEditorDoc(inputEditor, '');
+    isSyncing = true;
+    setEditorDoc(inputEditor, '', true);
     setEditorDoc(outputEditor, '');
+    isSyncing = false;
     localStorage.removeItem(KEYS.yamlInput);
     localStorage.removeItem(KEYS.yamlOutput);
     setStatus(statusBar, 'idle', 'Ready · Paste YAML and click Format');
@@ -294,9 +482,11 @@ function initYAML() {
   pasteBtn.addEventListener('click', async () => {
     try {
       const text = await navigator.clipboard.readText();
-      setEditorDoc(inputEditor, text);
+      isSyncing = true;
+      setEditorDoc(inputEditor, text, true);
+      isSyncing = false;
       localStorage.setItem(KEYS.yamlInput, text);
-      processYAML();
+      processYAML(true);
     } catch {
       showToast('Clipboard access denied', 'error-toast');
     }
@@ -366,6 +556,7 @@ function setFavicon() {
 
 document.addEventListener('DOMContentLoaded', () => {
   setFavicon();
+  initTheme();
   initTabs();
   initJSON();
   initYAML();
