@@ -22,21 +22,21 @@ import { tags } from '@lezer/highlight';
 //   tags.typeName             → !! tags
 const yamlHighlight = syntaxHighlighting(
   HighlightStyle.define([
-    { tag: tags.definition(tags.propertyName), color: '#90cdf4' }, // keys
-    { tag: tags.propertyName, color: '#90cdf4' }, // keys fallback
-    { tag: tags.content, color: '#68d391' }, // unquoted values (strings/numbers/bools/nulls)
-    { tag: tags.string, color: '#68d391' }, // quoted strings
-    { tag: tags.attributeValue, color: '#68d391' }, // directive values
-    { tag: tags.special(tags.string), color: '#68d391' }, // block literal headers
-    { tag: tags.separator, color: '#8892a4' }, // : , -
-    { tag: tags.lineComment, color: '#4a5568', fontStyle: 'italic' },
-    { tag: tags.keyword, color: '#b794f4' }, // directives
-    { tag: tags.meta, color: '#8892a4' }, // --- ...
-    { tag: tags.typeName, color: '#f6ad55' }, // !! tags
-    { tag: tags.labelName, color: '#b794f4' }, // anchors & aliases
-    { tag: tags.squareBracket, color: '#8892a4' },
-    { tag: tags.brace, color: '#8892a4' },
-    { tag: tags.punctuation, color: '#8892a4' },
+    { tag: tags.definition(tags.propertyName), color: 'var(--yaml-key)' }, // keys
+    { tag: tags.propertyName, color: 'var(--yaml-key)' }, // keys fallback
+    { tag: tags.content, color: 'var(--yaml-string)' }, // unquoted values
+    { tag: tags.string, color: 'var(--yaml-string)' }, // quoted strings
+    { tag: tags.attributeValue, color: 'var(--yaml-string)' }, // directive values
+    { tag: tags.special(tags.string), color: 'var(--yaml-string)' }, // block literal headers
+    { tag: tags.separator, color: 'var(--yaml-punct)' }, // : , -
+    { tag: tags.lineComment, color: 'var(--yaml-comment)', fontStyle: 'italic' },
+    { tag: tags.keyword, color: 'var(--yaml-bool)' }, // directives
+    { tag: tags.meta, color: 'var(--yaml-punct)' }, // --- ...
+    { tag: tags.typeName, color: 'var(--yaml-number)' }, // !! tags
+    { tag: tags.labelName, color: 'var(--yaml-bool)' }, // anchors & aliases
+    { tag: tags.squareBracket, color: 'var(--yaml-punct)' },
+    { tag: tags.brace, color: 'var(--yaml-punct)' },
+    { tag: tags.punctuation, color: 'var(--yaml-punct)' },
   ])
 );
 
