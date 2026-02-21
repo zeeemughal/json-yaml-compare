@@ -44,10 +44,10 @@
   --syn-bool: #b794f4;
   --syn-null: #718096;
   --syn-punct: #8892a4;
-  --syn-yaml-key: #90cdf4;
-  --syn-yaml-dash: #f6ad55;
+}
 
-  /* YAML specific mapping */
+.cm-editor {
+  /* YAML specific mapping (Dark Theme default) */
   --yaml-key: #90cdf4;
   --yaml-string: #68d391;
   --yaml-number: #f6ad55;
@@ -55,7 +55,9 @@
   --yaml-null: #a0aec0;
   --yaml-comment: #4a5568;
   --yaml-punct: #8892a4;
+}
 
+:root {
   /* Spacing */
   --header-h: 64px;
   --tabbar-h: 50px;
@@ -98,7 +100,9 @@
 
   --warn: #dd6b20;
   --warn-bg: rgba(221, 107, 32, 0.1);
+}
 
+[data-theme="light"] .cm-editor {
   /* Light Theme YAML Syntax Override */
   --yaml-key: #0451a5;
   /* VS Code Blue */
@@ -356,15 +360,15 @@ body {
 }
 
 /* Syntax overrides are now handled by CodeMirror theme */
-.cm-yaml-bool {
+.cm-editor .cm-yaml-bool {
   color: var(--yaml-bool) !important;
 }
 
-.cm-yaml-number {
+.cm-editor .cm-yaml-number {
   color: var(--yaml-number) !important;
 }
 
-.cm-yaml-null {
+.cm-editor .cm-yaml-null {
   color: var(--yaml-null) !important;
   font-style: italic;
 }

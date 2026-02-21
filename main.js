@@ -40,8 +40,6 @@ const yamlHighlight = syntaxHighlighting(
   ])
 );
 
-// YAML doesn't distinguish between booleans, numbers, nulls, and strings at the token level
-// (they are all tags.content). This plugin adds specific colours for true/false/numeric/null values
 const yamlValueDecorations = ViewPlugin.fromClass(class {
   constructor(view) {
     this.decorations = this.buildDecorations(view);
