@@ -1,14 +1,15 @@
 import jsyaml from 'js-yaml';
 
-// ===== Utilities =====
+// ===== Storage Keys =====
+const KEYS = {
+  jsonInput: 'devformat_json_input',
+  jsonOutput: 'devformat_json_output',
+  yamlInput: 'devformat_yaml_input',
+  yamlOutput: 'devformat_yaml_output',
+  activeTab: 'devformat_active_tab',
+};
 
-function escapeHtml(str) {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
+// ===== Utilities =====
 
 function showToast(msg, type = 'default') {
   const toast = document.getElementById('toast');
@@ -46,7 +47,9 @@ function buildLineNumbers(text, containerId) {
 }
 
 function syncLineNumbers(textarea, lineNumId) {
-  textarea.addEventListener('input', () => buildLineNumbers(textarea.value, lineNumId));
+  textarea.addEventListener('input', () => {
+    buildLineNumbers(textarea.value, lineNumId);
+  });
   textarea.addEventListener('scroll', () => {
     const ln = document.getElementById(lineNumId);
     if (ln) ln.scrollTop = textarea.scrollTop;
@@ -54,106 +57,35 @@ function syncLineNumbers(textarea, lineNumId) {
   buildLineNumbers(textarea.value, lineNumId);
 }
 
-// ===== JSON Syntax Highlighter =====
-
-function highlightJSON(str) {
-  // Tokenize JSON into highlighted HTML
-  const tokenRegex = /("(\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+\.?\d*(?:[eE][+\-]?\d+)?|[{}\[\],:])/g;
-  let result = '';
-  let lastIndex = 0;
-
-  str.replace(tokenRegex, (match, _full, _inner, _colon, _keyword, offset) => {
-    // Append anything before this match (whitespace etc.)
-    result += escapeHtml(str.slice(lastIndex, offset));
-    lastIndex = offset + match.length;
-
-    let cls = 'token-punct';
-    if (/^"/.test(match)) {
-      if (/:$/.test(match)) {
-        cls = 'token-key';
-      } else {
-        cls = 'token-string';
-      }
-    } else if (/true|false/.test(match)) {
-      cls = 'token-bool';
-    } else if (/null/.test(match)) {
-      cls = 'token-null';
-    } else if (/^-?\d/.test(match)) {
-      cls = 'token-number';
-    }
-
-    result += `<span class="${cls}">${escapeHtml(match)}</span>`;
-  });
-
-  result += escapeHtml(str.slice(lastIndex));
-  return result;
-}
-
-// ===== YAML Syntax Highlighter =====
-
-function highlightYAML(str) {
-  const lines = str.split('\n');
-  return lines.map(line => {
-    // Comment
-    if (/^\s*#/.test(line)) {
-      return `<span class="token-yaml-comment">${escapeHtml(line)}</span>`;
-    }
-    // Key: value
-    const kvMatch = line.match(/^(\s*)([\w\-./]+)(\s*:\s*)(.*)/);
-    if (kvMatch) {
-      const [, indent, key, colon, val] = kvMatch;
-      let valHtml = '';
-      const trimVal = val.trim();
-      if (trimVal === 'true' || trimVal === 'false') {
-        valHtml = `<span class="token-bool">${escapeHtml(val)}</span>`;
-      } else if (trimVal === 'null' || trimVal === '~') {
-        valHtml = `<span class="token-null">${escapeHtml(val)}</span>`;
-      } else if (/^-?\d+\.?\d*$/.test(trimVal)) {
-        valHtml = `<span class="token-number">${escapeHtml(val)}</span>`;
-      } else if (trimVal !== '') {
-        valHtml = `<span class="token-yaml-val">${escapeHtml(val)}</span>`;
-      }
-      return `${escapeHtml(indent)}<span class="token-yaml-key">${escapeHtml(key)}</span><span class="token-punct">${escapeHtml(colon)}</span>${valHtml}`;
-    }
-    // List item
-    const listMatch = line.match(/^(\s*)(- )(.*)/);
-    if (listMatch) {
-      const [, indent, dash, rest] = listMatch;
-      return `${escapeHtml(indent)}<span class="token-yaml-dash">${escapeHtml(dash)}</span><span class="token-yaml-val">${escapeHtml(rest)}</span>`;
-    }
-    return escapeHtml(line);
-  }).join('\n');
-}
-
-
 // ===== Status Bar =====
 
 function setStatus(barId, type, message, detail = '') {
   const bar = document.getElementById(barId);
   if (!bar) return;
+  const safeMsg = message.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const safeDetail = detail.replace(/</g, '&lt;').replace(/>/g, '&gt;');
   let inner = '';
   if (type === 'idle') {
-    inner = `<span class="status-idle">${escapeHtml(message)}</span>`;
+    inner = `<span class="status-idle">${safeMsg}</span>`;
   } else if (type === 'ok') {
-    inner = `<span class="status-ok">${escapeHtml(message)}</span>`;
+    inner = `<span class="status-ok">${safeMsg}</span>`;
   } else if (type === 'error') {
-    inner = `<span class="status-error">${escapeHtml(message)}</span>`;
-    if (detail) inner += `<span class="err-detail">${escapeHtml(detail)}</span>`;
+    inner = `<span class="status-error">${safeMsg}</span>`;
+    if (detail) inner += `<span class="err-detail">${safeDetail}</span>`;
   }
   bar.innerHTML = inner;
 }
 
-// ===== Output Render =====
+// ===== Render helpers =====
 
-function renderOutput(outputEl, lineNumId, html, rawText) {
-  outputEl.innerHTML = html;
-  buildLineNumbers(rawText, lineNumId);
-  // Sync scroll
+function setOutput(outputEl, lineNumId, text) {
+  outputEl.value = text;
+  buildLineNumbers(text, lineNumId);
   outputEl.scrollTop = 0;
 }
 
-function renderError(outputEl, lineNumId, message) {
-  outputEl.innerHTML = `<span style="color:var(--error)">${escapeHtml(message)}</span>`;
+function clearOutput(outputEl, lineNumId) {
+  outputEl.value = '';
   buildLineNumbers('', lineNumId);
 }
 
@@ -161,60 +93,65 @@ function renderError(outputEl, lineNumId, message) {
 // ===== JSON Module =====
 
 function initJSON() {
-  const input      = document.getElementById('json-input');
-  const output     = document.getElementById('json-output');
-  const statusBar  = 'json-status-bar';
-  const copyBtn    = document.getElementById('json-copy-btn');
-  const formatBtn  = document.getElementById('json-format-btn');
-  const minifyBtn  = document.getElementById('json-minify-btn');
-  const clearBtn   = document.getElementById('json-clear-btn');
-  const pasteBtn   = document.getElementById('json-paste-btn');
+  const input = document.getElementById('json-input');
+  const output = document.getElementById('json-output');
+  const statusBar = 'json-status-bar';
+  const copyBtn = document.getElementById('json-copy-btn');
+  const formatBtn = document.getElementById('json-format-btn');
+  const minifyBtn = document.getElementById('json-minify-btn');
+  const clearBtn = document.getElementById('json-clear-btn');
+  const pasteBtn = document.getElementById('json-paste-btn');
 
-  let lastFormatted = '';
+  // Restore from localStorage
+  const savedInput = localStorage.getItem(KEYS.jsonInput);
+  const savedOutput = localStorage.getItem(KEYS.jsonOutput);
+  if (savedInput) input.value = savedInput;
+  if (savedOutput) output.value = savedOutput;
+  buildLineNumbers(input.value, 'json-line-numbers');
+  buildLineNumbers(output.value, 'json-output-line-numbers');
 
   // Line numbers
   syncLineNumbers(input, 'json-line-numbers');
+  syncLineNumbers(output, 'json-output-line-numbers');
+
+  // Persist output edits
+  output.addEventListener('input', () => {
+    localStorage.setItem(KEYS.jsonOutput, output.value);
+    buildLineNumbers(output.value, 'json-output-line-numbers');
+  });
 
   function processJSON(minify = false) {
     const raw = input.value.trim();
+
+    localStorage.setItem(KEYS.jsonInput, input.value);
+
     if (!raw) {
-      renderError(output, 'json-output-line-numbers', '');
+      clearOutput(output, 'json-output-line-numbers');
+      localStorage.removeItem(KEYS.jsonOutput);
       setStatus(statusBar, 'idle', 'Ready · Paste JSON and click Format');
       return;
     }
 
     try {
       const parsed = JSON.parse(raw);
-      let formatted;
-      if (minify) {
-        formatted = JSON.stringify(parsed);
-      } else {
-        formatted = JSON.stringify(parsed, null, 2);
-      }
-      lastFormatted = formatted;
-      const highlighted = highlightJSON(formatted);
-      renderOutput(output, 'json-output-line-numbers', highlighted, formatted);
+      const formatted = minify
+        ? JSON.stringify(parsed)
+        : JSON.stringify(parsed, null, 2);
+
+      setOutput(output, 'json-output-line-numbers', formatted);
+      localStorage.setItem(KEYS.jsonOutput, formatted);
 
       const lines = formatted.split('\n').length;
       const size = new Blob([formatted]).size;
       const sizeStr = size > 1024 ? `${(size / 1024).toFixed(1)} KB` : `${size} B`;
       setStatus(statusBar, 'ok', `Valid JSON · ${lines} lines · ${sizeStr}`);
+      input.classList.remove('has-error');
     } catch (err) {
-      lastFormatted = '';
-      renderError(output, 'json-output-line-numbers', err.message);
-
-      // Parse line/col from error message
-      const match = err.message.match(/line (\d+)/i) || err.message.match(/position (\d+)/i);
+      input.classList.add('has-error');
+      clearOutput(output, 'json-output-line-numbers');
+      localStorage.removeItem(KEYS.jsonOutput);
       setStatus(statusBar, 'error', 'Invalid JSON', err.message);
-
-      // Try to highlight the error line in the input
-      highlightErrorLine(input, err.message);
     }
-  }
-
-  function highlightErrorLine(textarea, errMsg) {
-    textarea.classList.add('has-error');
-    // Only remove after next successful parse
   }
 
   formatBtn.addEventListener('click', () => processJSON(false));
@@ -224,6 +161,7 @@ function initJSON() {
   let debounceTimer;
   input.addEventListener('input', () => {
     input.classList.remove('has-error');
+    localStorage.setItem(KEYS.jsonInput, input.value);
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       if (input.value.trim()) processJSON(false);
@@ -232,11 +170,12 @@ function initJSON() {
 
   clearBtn.addEventListener('click', () => {
     input.value = '';
-    output.innerHTML = '';
-    lastFormatted = '';
+    output.value = '';
     input.classList.remove('has-error');
     buildLineNumbers('', 'json-line-numbers');
     buildLineNumbers('', 'json-output-line-numbers');
+    localStorage.removeItem(KEYS.jsonInput);
+    localStorage.removeItem(KEYS.jsonOutput);
     setStatus(statusBar, 'idle', 'Ready · Paste JSON and click Format');
     input.focus();
   });
@@ -245,6 +184,7 @@ function initJSON() {
     try {
       const text = await navigator.clipboard.readText();
       input.value = text;
+      localStorage.setItem(KEYS.jsonInput, text);
       buildLineNumbers(text, 'json-line-numbers');
       input.dispatchEvent(new Event('input'));
     } catch {
@@ -253,55 +193,83 @@ function initJSON() {
   });
 
   copyBtn.addEventListener('click', () => {
-    if (!lastFormatted) {
+    const text = output.value;
+    if (!text) {
       showToast('Nothing to copy – format first', 'error-toast');
       return;
     }
-    copyToClipboard(lastFormatted, copyBtn);
+    copyToClipboard(text, copyBtn);
   });
 
-  // Tab key support
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      const s = input.selectionStart;
-      input.value = input.value.slice(0, s) + '  ' + input.value.slice(input.selectionEnd);
-      input.selectionStart = input.selectionEnd = s + 2;
-      buildLineNumbers(input.value, 'json-line-numbers');
-    }
+  // Tab key support in both panes
+  [input, output].forEach(ta => {
+    ta.addEventListener('keydown', e => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const s = ta.selectionStart;
+        ta.value = ta.value.slice(0, s) + '  ' + ta.value.slice(ta.selectionEnd);
+        ta.selectionStart = ta.selectionEnd = s + 2;
+        buildLineNumbers(ta.value, ta === input ? 'json-line-numbers' : 'json-output-line-numbers');
+      }
+    });
   });
+
+  // Restore status based on saved content
+  if (savedOutput) {
+    const lines = savedOutput.split('\n').length;
+    const size = new Blob([savedOutput]).size;
+    const sizeStr = size > 1024 ? `${(size / 1024).toFixed(1)} KB` : `${size} B`;
+    setStatus(statusBar, 'ok', `Restored · ${lines} lines · ${sizeStr}`);
+  } else if (savedInput) {
+    setStatus(statusBar, 'idle', 'Input restored · Click Format to validate');
+  }
 }
 
 
 // ===== YAML Module =====
 
 function initYAML() {
-  const input      = document.getElementById('yaml-input');
-  const output     = document.getElementById('yaml-output');
-  const statusBar  = 'yaml-status-bar';
-  const copyBtn    = document.getElementById('yaml-copy-btn');
-  const formatBtn  = document.getElementById('yaml-format-btn');
-  const clearBtn   = document.getElementById('yaml-clear-btn');
-  const pasteBtn   = document.getElementById('yaml-paste-btn');
+  const input = document.getElementById('yaml-input');
+  const output = document.getElementById('yaml-output');
+  const statusBar = 'yaml-status-bar';
+  const copyBtn = document.getElementById('yaml-copy-btn');
+  const formatBtn = document.getElementById('yaml-format-btn');
+  const clearBtn = document.getElementById('yaml-clear-btn');
+  const pasteBtn = document.getElementById('yaml-paste-btn');
 
-  let lastFormatted = '';
+  // Restore from localStorage
+  const savedInput = localStorage.getItem(KEYS.yamlInput);
+  const savedOutput = localStorage.getItem(KEYS.yamlOutput);
+  if (savedInput) input.value = savedInput;
+  if (savedOutput) output.value = savedOutput;
+  buildLineNumbers(input.value, 'yaml-line-numbers');
+  buildLineNumbers(output.value, 'yaml-output-line-numbers');
 
   syncLineNumbers(input, 'yaml-line-numbers');
+  syncLineNumbers(output, 'yaml-output-line-numbers');
+
+  // Persist output edits
+  output.addEventListener('input', () => {
+    localStorage.setItem(KEYS.yamlOutput, output.value);
+    buildLineNumbers(output.value, 'yaml-output-line-numbers');
+  });
 
   function processYAML() {
     const raw = input.value.trim();
+
+    localStorage.setItem(KEYS.yamlInput, input.value);
+
     if (!raw) {
-      renderError(output, 'yaml-output-line-numbers', '');
+      clearOutput(output, 'yaml-output-line-numbers');
+      localStorage.removeItem(KEYS.yamlOutput);
       setStatus(statusBar, 'idle', 'Ready · Paste YAML and click Format');
       return;
     }
 
     try {
-      // Parse all documents (support multi-doc YAML)
       const docs = [];
       jsyaml.loadAll(raw, doc => docs.push(doc));
 
-      // Re-dump for canonical formatting
       let formatted;
       if (docs.length === 1) {
         formatted = jsyaml.dump(docs[0], {
@@ -318,13 +286,10 @@ function initYAML() {
           sortKeys: false,
         })).join('---\n');
       }
-
-      // Remove trailing newline from dump
       formatted = formatted.trimEnd();
-      lastFormatted = formatted;
 
-      const highlighted = highlightYAML(formatted);
-      renderOutput(output, 'yaml-output-line-numbers', highlighted, formatted);
+      setOutput(output, 'yaml-output-line-numbers', formatted);
+      localStorage.setItem(KEYS.yamlOutput, formatted);
 
       const lines = formatted.split('\n').length;
       const size = new Blob([formatted]).size;
@@ -332,18 +297,13 @@ function initYAML() {
       setStatus(statusBar, 'ok', `Valid YAML · ${lines} lines · ${sizeStr}`);
       input.classList.remove('has-error');
     } catch (err) {
-      lastFormatted = '';
       input.classList.add('has-error');
+      clearOutput(output, 'yaml-output-line-numbers');
+      localStorage.removeItem(KEYS.yamlOutput);
 
-      let errMsg = err.message || 'Unknown YAML error';
-      // js-yaml provides mark with line/col
       let detail = '';
-      if (err.mark) {
-        detail = `Line ${err.mark.line + 1}, Col ${err.mark.column + 1}`;
-      }
-
-      renderError(output, 'yaml-output-line-numbers', errMsg);
-      setStatus(statusBar, 'error', `Invalid YAML${detail ? ` · ${detail}` : ''}`, errMsg);
+      if (err.mark) detail = `Line ${err.mark.line + 1}, Col ${err.mark.column + 1}`;
+      setStatus(statusBar, 'error', `Invalid YAML${detail ? ` · ${detail}` : ''}`, err.message);
     }
   }
 
@@ -352,6 +312,7 @@ function initYAML() {
   let debounceTimer;
   input.addEventListener('input', () => {
     input.classList.remove('has-error');
+    localStorage.setItem(KEYS.yamlInput, input.value);
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => {
       if (input.value.trim()) processYAML();
@@ -360,11 +321,12 @@ function initYAML() {
 
   clearBtn.addEventListener('click', () => {
     input.value = '';
-    output.innerHTML = '';
-    lastFormatted = '';
+    output.value = '';
     input.classList.remove('has-error');
     buildLineNumbers('', 'yaml-line-numbers');
     buildLineNumbers('', 'yaml-output-line-numbers');
+    localStorage.removeItem(KEYS.yamlInput);
+    localStorage.removeItem(KEYS.yamlOutput);
     setStatus(statusBar, 'idle', 'Ready · Paste YAML and click Format');
     input.focus();
   });
@@ -373,6 +335,7 @@ function initYAML() {
     try {
       const text = await navigator.clipboard.readText();
       input.value = text;
+      localStorage.setItem(KEYS.yamlInput, text);
       buildLineNumbers(text, 'yaml-line-numbers');
       input.dispatchEvent(new Event('input'));
     } catch {
@@ -381,22 +344,35 @@ function initYAML() {
   });
 
   copyBtn.addEventListener('click', () => {
-    if (!lastFormatted) {
+    const text = output.value;
+    if (!text) {
       showToast('Nothing to copy – format first', 'error-toast');
       return;
     }
-    copyToClipboard(lastFormatted, copyBtn);
+    copyToClipboard(text, copyBtn);
   });
 
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Tab') {
-      e.preventDefault();
-      const s = input.selectionStart;
-      input.value = input.value.slice(0, s) + '  ' + input.value.slice(input.selectionEnd);
-      input.selectionStart = input.selectionEnd = s + 2;
-      buildLineNumbers(input.value, 'yaml-line-numbers');
-    }
+  [input, output].forEach(ta => {
+    ta.addEventListener('keydown', e => {
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        const s = ta.selectionStart;
+        ta.value = ta.value.slice(0, s) + '  ' + ta.value.slice(ta.selectionEnd);
+        ta.selectionStart = ta.selectionEnd = s + 2;
+        buildLineNumbers(ta.value, ta === input ? 'yaml-line-numbers' : 'yaml-output-line-numbers');
+      }
+    });
   });
+
+  // Restore status
+  if (savedOutput) {
+    const lines = savedOutput.split('\n').length;
+    const size = new Blob([savedOutput]).size;
+    const sizeStr = size > 1024 ? `${(size / 1024).toFixed(1)} KB` : `${size} B`;
+    setStatus(statusBar, 'ok', `Restored · ${lines} lines · ${sizeStr}`);
+  } else if (savedInput) {
+    setStatus(statusBar, 'idle', 'Input restored · Click Format to validate');
+  }
 }
 
 
@@ -406,22 +382,24 @@ function initTabs() {
   const tabs = document.querySelectorAll('.tab');
   const panels = document.querySelectorAll('.panel');
 
-  tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      const mode = tab.dataset.mode;
+  // Restore last active tab
+  const savedTab = localStorage.getItem(KEYS.activeTab) || 'json';
 
-      tabs.forEach(t => {
-        t.classList.remove('active');
-        t.setAttribute('aria-selected', 'false');
-      });
-      panels.forEach(p => p.classList.remove('active'));
-
-      tab.classList.add('active');
-      tab.setAttribute('aria-selected', 'true');
-      const panel = document.getElementById(`panel-${mode}`);
-      if (panel) panel.classList.add('active');
+  function activateTab(mode) {
+    tabs.forEach(t => {
+      const active = t.dataset.mode === mode;
+      t.classList.toggle('active', active);
+      t.setAttribute('aria-selected', active ? 'true' : 'false');
     });
+    panels.forEach(p => p.classList.toggle('active', p.id === `panel-${mode}`));
+    localStorage.setItem(KEYS.activeTab, mode);
+  }
+
+  tabs.forEach(tab => {
+    tab.addEventListener('click', () => activateTab(tab.dataset.mode));
   });
+
+  activateTab(savedTab);
 }
 
 
