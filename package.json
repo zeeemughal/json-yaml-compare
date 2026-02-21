@@ -12,6 +12,11 @@
     "vite": "^7.3.1"
   },
   "dependencies": {
+    "@babel/runtime": "^7.28.6",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-yaml": "^6.1.2",
+    "@uiw/codemirror-theme-vscode": "^4.25.4",
+    "codemirror": "^6.0.2",
     "js-yaml": "^4.1.1"
   }
 }

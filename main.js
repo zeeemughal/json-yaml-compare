@@ -1,4 +1,11 @@
 import jsyaml from 'js-yaml';
+import { EditorState } from '@codemirror/state';
+import { EditorView, keymap } from '@codemirror/view';
+import { basicSetup } from 'codemirror';
+import { indentWithTab } from '@codemirror/commands';
+import { json } from '@codemirror/lang-json';
+import { yaml } from '@codemirror/lang-yaml';
+import { vscodeDark } from '@uiw/codemirror-theme-vscode';
 
 // ===== Storage Keys =====
 const KEYS = {
@@ -37,26 +44,6 @@ async function copyToClipboard(text, btn) {
   }
 }
 
-// ===== Line Numbers =====
-
-function buildLineNumbers(text, containerId) {
-  const el = document.getElementById(containerId);
-  if (!el) return;
-  const lines = text ? text.split('\n').length : 1;
-  el.textContent = Array.from({ length: lines }, (_, i) => i + 1).join('\n');
-}
-
-function syncLineNumbers(textarea, lineNumId) {
-  textarea.addEventListener('input', () => {
-    buildLineNumbers(textarea.value, lineNumId);
-  });
-  textarea.addEventListener('scroll', () => {
-    const ln = document.getElementById(lineNumId);
-    if (ln) ln.scrollTop = textarea.scrollTop;
-  });
-  buildLineNumbers(textarea.value, lineNumId);
-}
-
 // ===== Status Bar =====
 
 function setStatus(barId, type, message, detail = '') {
@@ -76,25 +63,53 @@ function setStatus(barId, type, message, detail = '') {
   bar.innerHTML = inner;
 }
 
-// ===== Render helpers =====
 
-function setOutput(outputEl, lineNumId, text) {
-  outputEl.value = text;
-  buildLineNumbers(text, lineNumId);
-  outputEl.scrollTop = 0;
+// ===== CodeMirror Helper =====
+
+function createEditor(parentEl, initialDoc, langExt, onChange = null) {
+  const customTheme = EditorView.theme({
+    "&": { height: "100%", backgroundColor: "transparent", color: "var(--text-primary)" },
+    ".cm-scroller": { fontFamily: "var(--font-code)", fontSize: "13px", lineHeight: "1.6" },
+    ".cm-content": { padding: "14px 0" },
+    ".cm-gutters": {
+      backgroundColor: "var(--bg-base)",
+      color: "var(--text-muted)",
+      borderRight: "1px solid var(--border)",
+    },
+    ".cm-lineNumbers .cm-gutterElement": { padding: "0 10px 0 14px", minWidth: "46px" },
+    ".cm-cursor": { borderLeftColor: "var(--text-primary)" }
+  }, { dark: true });
+
+  const extensions = [
+    basicSetup,
+    langExt(),
+    vscodeDark,
+    customTheme,
+    keymap.of([indentWithTab])
+  ];
+
+  if (onChange) {
+    extensions.push(EditorView.updateListener.of((update) => {
+      if (update.docChanged) onChange(update.state.doc.toString());
+    }));
+  }
+
+  const state = EditorState.create({ doc: initialDoc, extensions });
+  return new EditorView({ state, parent: parentEl });
 }
 
-function clearOutput(outputEl, lineNumId) {
-  outputEl.value = '';
-  buildLineNumbers('', lineNumId);
+function setEditorDoc(view, text) {
+  view.dispatch({
+    changes: { from: 0, to: view.state.doc.length, insert: text }
+  });
 }
 
 
 // ===== JSON Module =====
 
 function initJSON() {
-  const input = document.getElementById('json-input');
-  const output = document.getElementById('json-output');
+  const inputContainer = document.getElementById('json-input');
+  const outputContainer = document.getElementById('json-output');
   const statusBar = 'json-status-bar';
   const copyBtn = document.getElementById('json-copy-btn');
   const formatBtn = document.getElementById('json-format-btn');
@@ -103,30 +118,30 @@ function initJSON() {
   const pasteBtn = document.getElementById('json-paste-btn');
 
   // Restore from localStorage
-  const savedInput = localStorage.getItem(KEYS.jsonInput);
-  const savedOutput = localStorage.getItem(KEYS.jsonOutput);
-  if (savedInput) input.value = savedInput;
-  if (savedOutput) output.value = savedOutput;
-  buildLineNumbers(input.value, 'json-line-numbers');
-  buildLineNumbers(output.value, 'json-output-line-numbers');
+  const defaultInput = `{\n  "name": "DevFormat",\n  "awesome": true\n}`;
+  let savedInput = localStorage.getItem(KEYS.jsonInput);
+  if (savedInput === null) savedInput = defaultInput;
+  const savedOutput = localStorage.getItem(KEYS.jsonOutput) || '';
 
-  // Line numbers
-  syncLineNumbers(input, 'json-line-numbers');
-  syncLineNumbers(output, 'json-output-line-numbers');
+  let debounceTimer;
 
-  // Persist output edits
-  output.addEventListener('input', () => {
-    localStorage.setItem(KEYS.jsonOutput, output.value);
-    buildLineNumbers(output.value, 'json-output-line-numbers');
+  // Initialize CodeMirror Editors
+  const inputEditor = createEditor(inputContainer, savedInput, json, (val) => {
+    localStorage.setItem(KEYS.jsonInput, val);
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      if (val.trim()) processJSON(false);
+    }, 600);
+  });
+
+  const outputEditor = createEditor(outputContainer, savedOutput, json, (val) => {
+    localStorage.setItem(KEYS.jsonOutput, val);
   });
 
   function processJSON(minify = false) {
-    const raw = input.value.trim();
-
-    localStorage.setItem(KEYS.jsonInput, input.value);
-
+    const raw = inputEditor.state.doc.toString().trim();
     if (!raw) {
-      clearOutput(output, 'json-output-line-numbers');
+      setEditorDoc(outputEditor, '');
       localStorage.removeItem(KEYS.jsonOutput);
       setStatus(statusBar, 'idle', 'Ready · Paste JSON and click Format');
       return;
@@ -138,17 +153,15 @@ function initJSON() {
         ? JSON.stringify(parsed)
         : JSON.stringify(parsed, null, 2);
 
-      setOutput(output, 'json-output-line-numbers', formatted);
+      setEditorDoc(outputEditor, formatted);
       localStorage.setItem(KEYS.jsonOutput, formatted);
 
       const lines = formatted.split('\n').length;
       const size = new Blob([formatted]).size;
       const sizeStr = size > 1024 ? `${(size / 1024).toFixed(1)} KB` : `${size} B`;
       setStatus(statusBar, 'ok', `Valid JSON · ${lines} lines · ${sizeStr}`);
-      input.classList.remove('has-error');
     } catch (err) {
-      input.classList.add('has-error');
-      clearOutput(output, 'json-output-line-numbers');
+      setEditorDoc(outputEditor, '');
       localStorage.removeItem(KEYS.jsonOutput);
       setStatus(statusBar, 'error', 'Invalid JSON', err.message);
     }
@@ -157,61 +170,33 @@ function initJSON() {
   formatBtn.addEventListener('click', () => processJSON(false));
   minifyBtn.addEventListener('click', () => processJSON(true));
 
-  // Auto-validate on input (debounced)
-  let debounceTimer;
-  input.addEventListener('input', () => {
-    input.classList.remove('has-error');
-    localStorage.setItem(KEYS.jsonInput, input.value);
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      if (input.value.trim()) processJSON(false);
-    }, 600);
-  });
-
   clearBtn.addEventListener('click', () => {
-    input.value = '';
-    output.value = '';
-    input.classList.remove('has-error');
-    buildLineNumbers('', 'json-line-numbers');
-    buildLineNumbers('', 'json-output-line-numbers');
+    setEditorDoc(inputEditor, '');
+    setEditorDoc(outputEditor, '');
     localStorage.removeItem(KEYS.jsonInput);
     localStorage.removeItem(KEYS.jsonOutput);
     setStatus(statusBar, 'idle', 'Ready · Paste JSON and click Format');
-    input.focus();
+    inputEditor.focus();
   });
 
   pasteBtn.addEventListener('click', async () => {
     try {
       const text = await navigator.clipboard.readText();
-      input.value = text;
+      setEditorDoc(inputEditor, text);
       localStorage.setItem(KEYS.jsonInput, text);
-      buildLineNumbers(text, 'json-line-numbers');
-      input.dispatchEvent(new Event('input'));
+      processJSON(false);
     } catch {
       showToast('Clipboard access denied', 'error-toast');
     }
   });
 
   copyBtn.addEventListener('click', () => {
-    const text = output.value;
+    const text = outputEditor.state.doc.toString();
     if (!text) {
       showToast('Nothing to copy – format first', 'error-toast');
       return;
     }
     copyToClipboard(text, copyBtn);
-  });
-
-  // Tab key support in both panes
-  [input, output].forEach(ta => {
-    ta.addEventListener('keydown', e => {
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        const s = ta.selectionStart;
-        ta.value = ta.value.slice(0, s) + '  ' + ta.value.slice(ta.selectionEnd);
-        ta.selectionStart = ta.selectionEnd = s + 2;
-        buildLineNumbers(ta.value, ta === input ? 'json-line-numbers' : 'json-output-line-numbers');
-      }
-    });
   });
 
   // Restore status based on saved content
@@ -229,8 +214,8 @@ function initJSON() {
 // ===== YAML Module =====
 
 function initYAML() {
-  const input = document.getElementById('yaml-input');
-  const output = document.getElementById('yaml-output');
+  const inputContainer = document.getElementById('yaml-input');
+  const outputContainer = document.getElementById('yaml-output');
   const statusBar = 'yaml-status-bar';
   const copyBtn = document.getElementById('yaml-copy-btn');
   const formatBtn = document.getElementById('yaml-format-btn');
@@ -238,29 +223,29 @@ function initYAML() {
   const pasteBtn = document.getElementById('yaml-paste-btn');
 
   // Restore from localStorage
-  const savedInput = localStorage.getItem(KEYS.yamlInput);
-  const savedOutput = localStorage.getItem(KEYS.yamlOutput);
-  if (savedInput) input.value = savedInput;
-  if (savedOutput) output.value = savedOutput;
-  buildLineNumbers(input.value, 'yaml-line-numbers');
-  buildLineNumbers(output.value, 'yaml-output-line-numbers');
+  const defaultInput = `name: DevFormat\nawesome: true\nfeatures:\n  - format\n  - validate`;
+  let savedInput = localStorage.getItem(KEYS.yamlInput);
+  if (savedInput === null) savedInput = defaultInput;
+  const savedOutput = localStorage.getItem(KEYS.yamlOutput) || '';
 
-  syncLineNumbers(input, 'yaml-line-numbers');
-  syncLineNumbers(output, 'yaml-output-line-numbers');
+  let debounceTimer;
 
-  // Persist output edits
-  output.addEventListener('input', () => {
-    localStorage.setItem(KEYS.yamlOutput, output.value);
-    buildLineNumbers(output.value, 'yaml-output-line-numbers');
+  const inputEditor = createEditor(inputContainer, savedInput, yaml, (val) => {
+    localStorage.setItem(KEYS.yamlInput, val);
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => {
+      if (val.trim()) processYAML();
+    }, 600);
+  });
+
+  const outputEditor = createEditor(outputContainer, savedOutput, yaml, (val) => {
+    localStorage.setItem(KEYS.yamlOutput, val);
   });
 
   function processYAML() {
-    const raw = input.value.trim();
-
-    localStorage.setItem(KEYS.yamlInput, input.value);
-
+    const raw = inputEditor.state.doc.toString().trim();
     if (!raw) {
-      clearOutput(output, 'yaml-output-line-numbers');
+      setEditorDoc(outputEditor, '');
       localStorage.removeItem(KEYS.yamlOutput);
       setStatus(statusBar, 'idle', 'Ready · Paste YAML and click Format');
       return;
@@ -272,33 +257,21 @@ function initYAML() {
 
       let formatted;
       if (docs.length === 1) {
-        formatted = jsyaml.dump(docs[0], {
-          indent: 2,
-          lineWidth: -1,
-          noRefs: true,
-          sortKeys: false,
-        });
+        formatted = jsyaml.dump(docs[0], { indent: 2, lineWidth: -1, noRefs: true, sortKeys: false });
       } else {
-        formatted = docs.map(d => jsyaml.dump(d, {
-          indent: 2,
-          lineWidth: -1,
-          noRefs: true,
-          sortKeys: false,
-        })).join('---\n');
+        formatted = docs.map(d => jsyaml.dump(d, { indent: 2, lineWidth: -1, noRefs: true, sortKeys: false })).join('---\n');
       }
       formatted = formatted.trimEnd();
 
-      setOutput(output, 'yaml-output-line-numbers', formatted);
+      setEditorDoc(outputEditor, formatted);
       localStorage.setItem(KEYS.yamlOutput, formatted);
 
       const lines = formatted.split('\n').length;
       const size = new Blob([formatted]).size;
       const sizeStr = size > 1024 ? `${(size / 1024).toFixed(1)} KB` : `${size} B`;
       setStatus(statusBar, 'ok', `Valid YAML · ${lines} lines · ${sizeStr}`);
-      input.classList.remove('has-error');
     } catch (err) {
-      input.classList.add('has-error');
-      clearOutput(output, 'yaml-output-line-numbers');
+      setEditorDoc(outputEditor, '');
       localStorage.removeItem(KEYS.yamlOutput);
 
       let detail = '';
@@ -309,59 +282,33 @@ function initYAML() {
 
   formatBtn.addEventListener('click', () => processYAML());
 
-  let debounceTimer;
-  input.addEventListener('input', () => {
-    input.classList.remove('has-error');
-    localStorage.setItem(KEYS.yamlInput, input.value);
-    clearTimeout(debounceTimer);
-    debounceTimer = setTimeout(() => {
-      if (input.value.trim()) processYAML();
-    }, 600);
-  });
-
   clearBtn.addEventListener('click', () => {
-    input.value = '';
-    output.value = '';
-    input.classList.remove('has-error');
-    buildLineNumbers('', 'yaml-line-numbers');
-    buildLineNumbers('', 'yaml-output-line-numbers');
+    setEditorDoc(inputEditor, '');
+    setEditorDoc(outputEditor, '');
     localStorage.removeItem(KEYS.yamlInput);
     localStorage.removeItem(KEYS.yamlOutput);
     setStatus(statusBar, 'idle', 'Ready · Paste YAML and click Format');
-    input.focus();
+    inputEditor.focus();
   });
 
   pasteBtn.addEventListener('click', async () => {
     try {
       const text = await navigator.clipboard.readText();
-      input.value = text;
+      setEditorDoc(inputEditor, text);
       localStorage.setItem(KEYS.yamlInput, text);
-      buildLineNumbers(text, 'yaml-line-numbers');
-      input.dispatchEvent(new Event('input'));
+      processYAML();
     } catch {
       showToast('Clipboard access denied', 'error-toast');
     }
   });
 
   copyBtn.addEventListener('click', () => {
-    const text = output.value;
+    const text = outputEditor.state.doc.toString();
     if (!text) {
       showToast('Nothing to copy – format first', 'error-toast');
       return;
     }
     copyToClipboard(text, copyBtn);
-  });
-
-  [input, output].forEach(ta => {
-    ta.addEventListener('keydown', e => {
-      if (e.key === 'Tab') {
-        e.preventDefault();
-        const s = ta.selectionStart;
-        ta.value = ta.value.slice(0, s) + '  ' + ta.value.slice(ta.selectionEnd);
-        ta.selectionStart = ta.selectionEnd = s + 2;
-        buildLineNumbers(ta.value, ta === input ? 'yaml-line-numbers' : 'yaml-output-line-numbers');
-      }
-    });
   });
 
   // Restore status

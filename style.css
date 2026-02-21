@@ -277,41 +277,22 @@ body {
   position: relative;
 }
 
-.line-numbers {
-  font-family: var(--font-code);
-  font-size: 12.5px;
-  line-height: 1.6;
-  color: var(--text-muted);
-  text-align: right;
-  padding: 14px 10px 14px 14px;
-  background: var(--bg-base);
-  border-right: 1px solid var(--border);
-  user-select: none;
-  white-space: pre;
-  overflow: hidden;
-  min-width: 46px;
-  flex-shrink: 0;
-}
-
-.editor {
+.cm-container {
   flex: 1;
-  background: var(--bg-base);
-  border: none;
-  outline: none;
-  color: var(--text-primary);
-  font-family: var(--font-code);
-  font-size: 13px;
-  line-height: 1.6;
-  padding: 14px 16px;
-  resize: none;
-  tab-size: 2;
-  white-space: pre;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
 }
 
-.editor::placeholder {
-  color: var(--text-muted);
-  font-style: italic;
+/* Ensure CodeMirror fills the container */
+.cm-editor {
+  flex: 1;
+  height: 100%;
+}
+
+.cm-scroller {
+  overflow: auto;
 }
 
 /* Output */
@@ -319,75 +300,9 @@ body {
   position: relative;
 }
 
-/* Output — now a textarea */
-.output {
-  flex: 1;
-  background: var(--bg-base);
-  border: none;
-  outline: none;
-  font-family: var(--font-code);
-  font-size: 13px;
-  line-height: 1.6;
-  padding: 14px 16px;
-  overflow: auto;
-  white-space: pre;
-  word-break: normal;
-  resize: none;
-  color: var(--text-primary);
-  tab-size: 2;
-}
+/* Syntax overrides are now handled by CodeMirror theme */
 
-/* Error highlighting in output area */
-.output .err-line {
-  background: var(--error-line-bg);
-  border-left: 2px solid var(--error);
-  margin-left: -16px;
-  padding-left: 14px;
-  display: block;
-}
-
-/* Syntax token highlighting */
-.token-key {
-  color: var(--syn-key);
-}
-
-.token-string {
-  color: var(--syn-string);
-}
-
-.token-number {
-  color: var(--syn-number);
-}
-
-.token-bool {
-  color: var(--syn-bool);
-}
-
-.token-null {
-  color: var(--syn-null);
-}
-
-.token-punct {
-  color: var(--syn-punct);
-}
-
-.token-yaml-key {
-  color: var(--syn-yaml-key);
-  font-weight: 500;
-}
-
-.token-yaml-val {
-  color: var(--syn-string);
-}
-
-.token-yaml-dash {
-  color: var(--syn-yaml-dash);
-}
-
-.token-yaml-comment {
-  color: var(--text-muted);
-  font-style: italic;
-}
+/* Removed manual syntax tokens css */
 
 /* ===== Divider / Action Column ===== */
 .pane-divider {
@@ -612,10 +527,7 @@ body {
   background: rgba(255, 255, 255, 0.2);
 }
 
-/* ===== Inline error squiggle in input (hack via textarea shadow) ===== */
-.editor.has-error {
-  caret-color: var(--error);
-}
+/* Inline error squiggle in input via CodeMirror theme */
 
 /* ===== Error overlay line highlight ===== */
 .err-overlay {
